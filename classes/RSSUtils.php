@@ -739,10 +739,12 @@ class RSSUtils {
 				}
 
 				$entry_guid_hashed_compat = 'SHA1:' . sha1("{$feed_obj->owner_uid},$entry_guid");
-				$entry_guid_hashed = json_encode(["ver" => 2, "uid" => $feed_obj->owner_uid, "hash" => 'SHA1:' . sha1($entry_guid)]);
+				$entry_guid_hashed_v2 = json_encode(["ver" => 2, "uid" => $feed_obj->owner_uid, "hash" => 'SHA1:' . sha1($entry_guid)]);
+				// entry_guid_hashed v3, added the feed id to generate the guid of the entry (https://github.com/tt-rss/tt-rss/issues/57)
+				$entry_guid_hashed = json_encode(["ver" => 3, "uid" => $feed_obj->owner_uid, "feed_id" => $feed, "hash" => 'SHA1:' . sha1($entry_guid)]);
 				$entry_guid = "$feed_obj->owner_uid,$entry_guid";
 
-				Debug::log("guid $entry_guid (hash: $entry_guid_hashed compat: $entry_guid_hashed_compat)", Debug::LOG_VERBOSE);
+				Debug::log("guid $entry_guid (hash: $entry_guid_hashed hash(v2): $entry_guid_hashed_v2 compat: $entry_guid_hashed_compat)", Debug::LOG_VERBOSE);
 
 				$entry_timestamp = (int)$item->get_date();
 
@@ -785,8 +787,8 @@ class RSSUtils {
 				Debug::log("done collecting data.", Debug::LOG_VERBOSE);
 
 				$sth = $pdo->prepare("SELECT id, content_hash, lang FROM ttrss_entries
-					WHERE guid IN (?, ?, ?)");
-				$sth->execute([$entry_guid, $entry_guid_hashed, $entry_guid_hashed_compat]);
+					WHERE guid IN (?, ?, ?, ?)");
+				$sth->execute([$entry_guid, $entry_guid_hashed, $entry_guid_hashed_v2, $entry_guid_hashed_compat]);
 
 				if ($row = $sth->fetch()) {
 					$base_entry_id = $row["id"];
@@ -1002,15 +1004,15 @@ class RSSUtils {
 					self::cache_media($entry_content, $feed_obj->site_url);
 
 				$csth = $pdo->prepare("SELECT id FROM ttrss_entries
-					WHERE guid IN (?, ?, ?)");
-				$csth->execute([$entry_guid, $entry_guid_hashed, $entry_guid_hashed_compat]);
+					WHERE guid IN (?, ?, ?, ?)");
+				$csth->execute([$entry_guid, $entry_guid_hashed, $entry_guid_hashed_v2, $entry_guid_hashed_compat]);
 
 				if ($row = $csth->fetch()) {
 					Debug::log("select returned RID: " . $row['id'], Debug::LOG_VERBOSE);
 					$base_record_created = false;
 
 				} else {
-					Debug::log("base guid [$entry_guid or $entry_guid_hashed] not found, creating...", Debug::LOG_VERBOSE);
+					Debug::log("base guid [$entry_guid or $entry_guid_hashed or $entry_guid_hashed_v2] not found, creating...", Debug::LOG_VERBOSE);
 
 					// base post entry does not exist, create it
 					$isth = $pdo->prepare(
